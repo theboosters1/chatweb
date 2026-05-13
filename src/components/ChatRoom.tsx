@@ -26,6 +26,7 @@ interface ChatRoomProps {
 }
 
 export default function ChatRoom({ roomId, passwordKey, userName, onExit }: ChatRoomProps) {
+  const [isConnected, setIsConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [users, setUsers] = useState<User[]>([]);
@@ -36,29 +37,47 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    socketRef.current = io();
+    // Connect to the same origin
+    socketRef.current = io(window.location.origin, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
 
     const socket = socketRef.current;
 
     socket.on('connect', () => {
+      console.log('Connected to server');
+      setIsConnected(true);
       socket.emit('join-room', { roomId, userName });
     });
 
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
     socket.on('receive-message', ({ senderId, senderName, encryptedData, timestamp }) => {
-      const decryptedText = decryptMessage(encryptedData, passwordKey);
-      setMessages(prev => [...prev, {
-        id: Math.random().toString(36).substr(2, 9),
-        senderId,
-        senderName,
-        text: decryptedText,
-        timestamp
-      }]);
+      try {
+        const decryptedText = decryptMessage(encryptedData, passwordKey);
+        setMessages(prev => [...prev, {
+          id: `${senderId}-${timestamp}-${Math.random().toString(36).substr(2, 5)}`,
+          senderId,
+          senderName,
+          text: decryptedText,
+          timestamp
+        }]);
+      } catch (err) {
+        console.error('Failed to process message:', err);
+      }
     });
 
     socket.on('user-joined', ({ userId, userName, timestamp }) => {
-      setUsers(prev => [...prev, { userId, userName }]);
+      setUsers(prev => {
+        if (prev.find(u => u.userId === userId)) return prev;
+        return [...prev, { userId, userName }];
+      });
       setMessages(prev => [...prev, {
-        id: 'system-' + timestamp,
+        id: `system-${timestamp}`,
         senderId: 'system',
         senderName: 'System',
         text: `${userName} joined the shadows`,
@@ -70,7 +89,7 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
     socket.on('user-left', ({ userId, userName, timestamp }) => {
       setUsers(prev => prev.filter(u => u.userId !== userId));
       setMessages(prev => [...prev, {
-        id: 'system-' + timestamp,
+        id: `system-${timestamp}`,
         senderId: 'system',
         senderName: 'System',
         text: `${userName} vanished`,
@@ -93,34 +112,57 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
     });
 
     return () => {
+      socket.off('connect');
+      socket.off('disconnect');
+      socket.off('receive-message');
+      socket.off('user-joined');
+      socket.off('user-left');
+      socket.off('room-data');
+      socket.off('user-typing');
       socket.disconnect();
     };
   }, [roomId, userName, passwordKey]);
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
     }
   }, [messages]);
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !socketRef.current) return;
-
-    const encrypted = encryptMessage(input, passwordKey);
-    socketRef.current.emit('send-message', { roomId, encryptedData: encrypted });
-    setInput('');
+  const handleSend = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     
-    // Stop typing immediately
-    socketRef.current.emit('typing', { roomId, isTyping: false });
+    if (!input.trim() || !socketRef.current || !isConnected) return;
+
+    try {
+      const encrypted = encryptMessage(input.trim(), passwordKey);
+      socketRef.current.emit('send-message', { roomId, encryptedData: encrypted });
+      setInput('');
+      
+      // Stop typing immediately
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      setIsTyping(false);
+      socketRef.current.emit('typing', { roomId, isTyping: false });
+    } catch (err) {
+      console.error('Error sending message:', err);
+    }
   };
 
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInput(e.target.value);
+    const val = e.target.value;
+    setInput(val);
     
-    if (!isTyping) {
+    if (!isConnected || !socketRef.current) return;
+
+    if (!isTyping && val.trim().length > 0) {
       setIsTyping(true);
-      socketRef.current?.emit('typing', { roomId, isTyping: true });
+      socketRef.current.emit('typing', { roomId, isTyping: true });
+    } else if (val.trim().length === 0 && isTyping) {
+      setIsTyping(false);
+      socketRef.current.emit('typing', { roomId, isTyping: false });
     }
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -207,8 +249,10 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
           </div>
           <div className="flex items-center gap-6">
             <div className="flex flex-col items-end">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Latency</span>
-              <span className="text-xs font-mono text-emerald-400">12ms</span>
+              <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Status</span>
+              <span className={`text-[10px] font-mono uppercase font-bold ${isConnected ? 'text-emerald-400' : 'text-red-500'}`}>
+                {isConnected ? 'Sync Active' : 'Disconnected'}
+              </span>
             </div>
             <button onClick={onExit} className="md:hidden p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
               <LogOut className="w-5 h-5" />
@@ -225,7 +269,7 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
              </div>
           )}
           <div className="mt-auto" /> {/* Push messages to bottom if few */}
-          <AnimatePresence>
+          <AnimatePresence initial={false}>
             {messages.map((m) => (
               <motion.div
                 key={m.id}
@@ -271,14 +315,14 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                className="flex items-center gap-3 px-2"
+                className="flex items-center gap-3 px-2 py-2"
               >
                 <div className="flex gap-1">
                   <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" />
                   <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-75" />
                   <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-150" />
                 </div>
-                <span className="text-[11px] text-slate-500 italic font-medium">{u} is typing...</span>
+                <span className="text-[11px] text-slate-500 italic font-medium tracking-tight">{u} is typing...</span>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -296,11 +340,12 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
               value={input}
               onChange={handleTyping}
               className="w-full h-12 bg-white/5 border border-white/10 rounded-xl pl-12 pr-24 text-sm text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all placeholder:text-slate-700 shadow-inner"
+              autoComplete="off"
             />
             <div className="absolute right-2 flex items-center gap-2">
               <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || !isConnected}
                 className="px-4 h-8 bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-bold rounded-lg transition-all shadow-[0_0_15px_rgba(8,145,178,0.3)] disabled:opacity-30 disabled:grayscale uppercase tracking-widest active:scale-95"
               >
                 SEND
