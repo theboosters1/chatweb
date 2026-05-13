@@ -1,0 +1,6 @@
+{
+  "name": "Cryptoverse",
+  "description": "Secure, anonymous, real-time chat with end-to-end AES encryption and zero data persistence.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

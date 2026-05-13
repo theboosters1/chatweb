@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: 222 47% 2%;
+    --foreground: 213 27% 84%;
+    --card: 222 47% 4%;
+    --card-foreground: 213 27% 84%;
+    --popover: 222 47% 4%;
+    --popover-foreground: 213 27% 84%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 222 47% 2%;
+    --secondary: 222 47% 11%;
+    --secondary-foreground: 213 27% 84%;
+    --muted: 222 47% 11%;
+    --muted-foreground: 215 20.2% 55.1%;
+    --accent: 222 47% 11%;
+    --accent-foreground: 213 27% 84%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 213 27% 84%;
+    --border: 222 47% 11%;
+    --input: 222 47% 11%;
+    --ring: 199 89% 48%;
+    --radius: 1rem;
+  }
+}
+
+body {
+  background-color: #020408;
+  color: #94a3b8; /* slate-400 equivalent */
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-input {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(8, 145, 178, 0.3); /* cyan-600/30 */
+  box-shadow: 0 0 20px rgba(8, 145, 178, 0.1);
+  outline: none;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
