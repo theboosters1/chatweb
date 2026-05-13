@@ -37,17 +37,17 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    // Connect to the same origin
-    socketRef.current = io(window.location.origin, {
+    // Connect to the server - passing no arguments allows it to automatically detect the origin
+    socketRef.current = io({
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
     });
 
     const socket = socketRef.current;
 
     socket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('Connected to server with ID:', socket.id);
       setIsConnected(true);
       socket.emit('join-room', { roomId, userName });
     });
@@ -261,71 +261,67 @@ export default function ChatRoom({ roomId, passwordKey, userName, onExit }: Chat
         </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6 flex flex-col" ref={scrollRef}>
-          {messages.length === 0 && (
-             <div className="h-full flex flex-col items-center justify-center space-y-4 opacity-10">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 custom-scrollbar flex flex-col" ref={scrollRef}>
+          {messages.length === 0 ? (
+             <div className="flex-1 flex flex-col items-center justify-center space-y-4 opacity-10">
                 <Shield className="w-16 h-16" />
                 <p className="text-[10px] tracking-[0.5em] font-bold uppercase">Awaiting encrypted burst</p>
              </div>
+          ) : (
+            <>
+              <div className="flex-1" /> {/* Push messages to bottom */}
+              <div className="space-y-6">
+                {messages.map((m) => (
+                  <div
+                    key={m.id}
+                    className={`flex ${m.senderId === socketRef.current?.id ? 'justify-end' : 'justify-start'} w-full animate-in fade-in slide-in-from-bottom-2 duration-300`}
+                  >
+                    {m.isSystem ? (
+                      <div className="w-full text-center py-4">
+                        <span className="px-4 py-1.5 rounded-full bg-slate-900/50 border border-white/5 text-[9px] text-slate-500 uppercase tracking-[0.3em] font-bold">
+                           {String(m.text)}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className={`max-w-[85%] sm:max-w-[75%] space-y-1.5 ${m.senderId === socketRef.current?.id ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}>
+                        <div className={`flex items-center gap-2 mb-0.5 ${m.senderId === socketRef.current?.id ? 'flex-row-reverse' : 'flex-row'}`}>
+                          <span className={`text-[10px] font-bold uppercase tracking-tighter ${m.senderId === socketRef.current?.id ? 'text-cyan-400' : 'text-slate-500'}`}>
+                            {m.senderId === socketRef.current?.id ? 'You' : m.senderName}
+                          </span>
+                          <span className="text-[9px] text-slate-600 font-mono">
+                            {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div 
+                          className={`p-4 rounded-2xl text-sm leading-relaxed shadow-xl border whitespace-pre-wrap break-words min-w-[50px] ${
+                            m.senderId === socketRef.current?.id
+                              ? 'bg-indigo-600/30 border-indigo-500/40 text-white rounded-tr-none'
+                              : 'bg-slate-900 border-white/10 text-slate-200 rounded-tl-none'
+                          }`}
+                        >
+                          {String(m.text)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                {typingUsers.size > 0 && Array.from(typingUsers).map(u => (
+                  <div
+                    key={`typing-${u}`}
+                    className="flex items-center gap-3 px-2 py-2"
+                  >
+                    <div className="flex gap-1">
+                      <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" />
+                      <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-75" />
+                      <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-150" />
+                    </div>
+                    <span className="text-[11px] text-slate-500 italic font-medium tracking-tight">{u} is typing...</span>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
-          <div className="mt-auto" /> {/* Push messages to bottom if few */}
-          <AnimatePresence initial={false}>
-            {messages.map((m) => (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className={`flex ${m.senderId === socketRef.current?.id ? 'justify-end' : 'justify-start'} w-full`}
-              >
-                {m.isSystem ? (
-                  <div className="w-full text-center py-6">
-                    <span className="px-4 py-1.5 rounded-full bg-slate-900/50 border border-white/5 text-[9px] text-slate-500 uppercase tracking-[0.3em] font-bold">
-                       {m.text}
-                    </span>
-                  </div>
-                ) : (
-                  <div className={`max-w-[75%] space-y-1.5 ${m.senderId === socketRef.current?.id ? 'flex flex-col items-end' : 'flex flex-col items-start'}`}>
-                    <div className={`flex items-center gap-2 mb-0.5 ${m.senderId === socketRef.current?.id ? 'flex-row-reverse' : 'flex-row'}`}>
-                      <span className={`text-[10px] font-bold uppercase tracking-tighter ${m.senderId === socketRef.current?.id ? 'text-cyan-400' : 'text-slate-500'}`}>
-                        {m.senderId === socketRef.current?.id ? 'You' : m.senderName}
-                      </span>
-                      <span className="text-[9px] text-slate-600 font-mono">
-                        {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </span>
-                    </div>
-                    <div 
-                      className={`p-4 rounded-2xl text-sm leading-relaxed shadow-xl border ${
-                        m.senderId === socketRef.current?.id
-                          ? 'bg-indigo-600/20 border-indigo-500/30 text-slate-100 rounded-tr-none shadow-indigo-500/5'
-                          : 'bg-slate-900 border-white/5 text-slate-300 rounded-tl-none shadow-black/40'
-                      }`}
-                    >
-                      {m.text}
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-          
-          <AnimatePresence>
-            {typingUsers.size > 0 && Array.from(typingUsers).map(u => (
-              <motion.div
-                key={`typing-${u}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center gap-3 px-2 py-2"
-              >
-                <div className="flex gap-1">
-                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse" />
-                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-75" />
-                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-pulse delay-150" />
-                </div>
-                <span className="text-[11px] text-slate-500 italic font-medium tracking-tight">{u} is typing...</span>
-              </motion.div>
-            ))}
-          </AnimatePresence>
         </div>
 
         {/* Input */}
