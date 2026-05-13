@@ -35,12 +35,13 @@ async function startServer() {
   });
   app.use("/api", limiter);
 
-  // Socket.IO Setup
+  // Socket.IO Setup with explicit transports
   const io = new Server(server, {
     cors: {
       origin: "*",
       methods: ["GET", "POST"]
-    }
+    },
+    transports: ["polling", "websocket"]
   });
 
   // In-memory room tracking (ephemeral)
@@ -48,10 +49,10 @@ async function startServer() {
   const userNames = new Map<string, string>(); // socketId -> userName
 
   io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+    console.log("Connect attempt:", socket.id);
 
     socket.on("join-room", ({ roomId, userName }) => {
-      // Basic validation
+      console.log(`Join Room Request: ${userName} -> ${roomId}`);
       if (!roomId || !userName) return;
 
       socket.join(roomId);
@@ -63,7 +64,7 @@ async function startServer() {
       rooms.get(roomId)!.add(socket.id);
 
       // Notify others
-      socket.to(roomId).emit("user-joined", {
+      io.to(roomId).emit("user-joined", {
         userId: socket.id,
         userName,
         timestamp: Date.now()
@@ -78,15 +79,12 @@ async function startServer() {
       socket.emit("room-data", {
         users: currentUsers
       });
-
-      console.log(`${userName} joined room: ${roomId}`);
     });
 
     socket.on("send-message", ({ roomId, encryptedData }) => {
+      console.log(`Message in ${roomId} from ${socket.id}`);
       if (!roomId || !encryptedData) return;
       
-      // Broadcast encrypted message to the room
-      // Server DOES NOT decrypt this
       io.to(roomId).emit("receive-message", {
         senderId: socket.id,
         senderName: userNames.get(socket.id) || "Anonymous",
